@@ -1,0 +1,11 @@
+{
+  "pageTitle": "Server Status",
+  "description": "Live status of my servers",
+  "refreshSeconds": 60,
+  "servers": [
+    {
+      "name": "Server 0",
+      "url": "https://healthchecks.io/b/2/b31e002e-161a-4cfb-9e24-44fa12a8b52d.json"
+    }
+  ]
+}
