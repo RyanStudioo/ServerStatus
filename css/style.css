@@ -84,8 +84,29 @@ textarea {
    Author's custom styles
    ========================================================================== */
 
+:root {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --card-bg: #fff;
+  --text: #222;
+  --text-muted: #666;
+  --card-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #18181b;
+    --card-bg: #27272a;
+    --text: #e4e4e7;
+    --text-muted: #a1a1aa;
+    --card-shadow: 0 1px 4px rgb(0 0 0 / 40%);
+  }
+}
+
 body {
-  background: #f4f5f7;
+  background: var(--bg);
+  color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
   margin: 0;
@@ -98,9 +119,9 @@ body {
 }
 
 .server-card {
-  background: #fff;
+  background: var(--card-bg);
   border-radius: 8px;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+  box-shadow: var(--card-shadow);
   padding: 1.5rem;
   margin-top: 1rem;
 }
@@ -119,9 +140,38 @@ body {
 }
 
 .server-details {
-  color: #666;
+  color: var(--text-muted);
   font-size: 0.875rem;
   margin: 0.5rem 0 0;
+}
+
+.overall-status {
+  border-radius: 8px;
+  color: #fff;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-top: 1rem;
+  padding: 1rem 1.5rem;
+}
+
+.overall-status.checking {
+  background: #52525b;
+}
+
+.overall-status.up {
+  background: #16a34a;
+}
+
+.overall-status.grace {
+  background: #d97706;
+}
+
+.overall-status.down {
+  background: #dc2626;
+}
+
+.overall-status.error {
+  background: #71717a;
 }
 
 .status-dot {
