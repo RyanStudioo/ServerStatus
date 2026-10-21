@@ -26,6 +26,12 @@ let bannerMeta;
 let baseTitle = document.title;
 let lastUpdatedAt = null;
 
+// Shared hover tooltip for the daily uptime bars.
+let tooltip;
+let tooltipDate;
+let tooltipValue;
+let tooltipDetail;
+
 const faviconIco = document.querySelector('link[rel="icon"][sizes="any"]');
 const faviconSvg = document.querySelector('link[rel="icon"][type="image/svg+xml"]');
 const originalFaviconHrefs = [faviconIco, faviconSvg].map(
@@ -91,13 +97,15 @@ function formatDuration(totalSeconds) {
   return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
-function formatDate(dateString) {
+function formatFullDate(dateString) {
   if (!dateString) return '';
   const date = new Date(`${dateString}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return dateString;
   return new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
     month: 'short',
     day: 'numeric',
+    year: 'numeric',
     timeZone: 'UTC',
   }).format(date);
 }
@@ -203,6 +211,7 @@ function createCard(server, index, key) {
 
 function renderBars(container, daily, windowDays) {
   const entries = Array.isArray(daily) ? daily.slice(-windowDays) : [];
+  hideDayTooltip();
   container.replaceChildren();
 
   for (let index = 0; index < windowDays; index += 1) {
@@ -211,16 +220,79 @@ function renderBars(container, daily, windowDays) {
 
     if (!day || day.uptimePercent === null || day.uptimePercent === undefined) {
       bar.classList.add('unknown');
-      bar.title = day ? `${formatDate(day.date)}: no data` : 'No data';
     } else {
       const percent = Number(day.uptimePercent);
       bar.classList.add(percent >= 99.995 ? 'up' : 'down');
-      bar.title = `${formatDate(day.date)}: ${formatPercent(percent)}% uptime`;
     }
+
+    bar.addEventListener('mouseenter', () => showDayTooltip(bar, day));
+    bar.addEventListener('mouseleave', hideDayTooltip);
 
     bar.setAttribute('aria-hidden', 'true');
     container.append(bar);
   }
+}
+
+/*
+ * One tooltip element is shared by every bar in every card. Hovering a bar
+ * fills it with that day's date and uptime and pins it above the bar. The
+ * bars carry an aria-label instead, so the tooltip stays aria-hidden.
+ */
+function createTooltip() {
+  tooltip = createEl('div', 'uptime-tooltip');
+  tooltip.setAttribute('aria-hidden', 'true');
+  tooltipDate = createEl('span', 'tooltip-date');
+  tooltipValue = createEl('span', 'tooltip-value');
+  tooltipDetail = createEl('span', 'tooltip-detail');
+  tooltip.append(tooltipDate, tooltipValue, tooltipDetail);
+  document.body.append(tooltip);
+
+  // Keep the tooltip honest when the layout moves under the pointer.
+  window.addEventListener('scroll', hideDayTooltip, { capture: true, passive: true });
+  document.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse') hideDayTooltip();
+  });
+}
+
+function hideDayTooltip() {
+  if (tooltip) tooltip.classList.remove('visible');
+}
+
+function showDayTooltip(bar, day) {
+  if (!tooltip) return;
+
+  const hasData = day && day.uptimePercent !== null && day.uptimePercent !== undefined;
+  tooltipDate.textContent = hasData ? formatFullDate(day.date) : '';
+  tooltipDate.hidden = !tooltipDate.textContent;
+  tooltipValue.textContent = hasData
+    ? `${formatPercent(Number(day.uptimePercent))}% uptime`
+    : 'No data';
+  tooltipDetail.textContent = hasData && Number(day.downSeconds) > 0
+    ? `${formatDuration(day.downSeconds)} downtime`
+    : '';
+  tooltipDetail.hidden = !tooltipDetail.textContent;
+
+  positionDayTooltip(bar);
+  tooltip.classList.add('visible');
+}
+
+function positionDayTooltip(bar) {
+  const rect = bar.getBoundingClientRect();
+  const gap = 6;
+  const margin = 8;
+  const width = tooltip.offsetWidth;
+  const height = tooltip.offsetHeight;
+
+  const maxLeft = Math.max(margin, window.innerWidth - margin - width);
+  const left = Math.min(
+    Math.max(margin, rect.left + rect.width / 2 - width / 2),
+    maxLeft,
+  );
+  let top = rect.top - height - gap;
+  if (top < margin) top = rect.bottom + gap;
+
+  tooltip.style.left = `${Math.round(left)}px`;
+  tooltip.style.top = `${Math.round(top)}px`;
 }
 
 function renderCard(entry, server, windowDays) {
@@ -435,6 +507,8 @@ async function init() {
   bannerMeta = createEl('span', 'overall-status-meta');
   banner.append(bannerText, bannerMeta);
   document.getElementById('servers').before(banner);
+
+  createTooltip();
 
   try {
     const response = await fetch(CONFIG_URL, { cache: 'no-store' });
