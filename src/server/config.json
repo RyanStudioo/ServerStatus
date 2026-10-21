@@ -1,7 +1,4 @@
 {
-  "pageTitle": "Server Status",
-  "description": "Live status of Ryan Studio's servers",
-  "refreshSeconds": 60,
   "servers": [
     {
       "name": "Server 0",

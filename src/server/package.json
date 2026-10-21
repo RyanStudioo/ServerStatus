@@ -1,0 +1,17 @@
+{
+  "name": "@serverstatus/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker exposing Healthchecks.io uptime",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/*.test.js",
+    "db:migrate:local": "wrangler d1 migrations apply serverstatus --local",
+    "db:migrate:remote": "wrangler d1 migrations apply serverstatus --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

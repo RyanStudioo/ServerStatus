@@ -91,6 +91,9 @@ textarea {
   --text: #222;
   --text-muted: #666;
   --card-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+  --uptime-up: #16a34a;
+  --uptime-down: #dc2626;
+  --uptime-unknown: #d4d4d8;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -101,6 +104,9 @@ textarea {
     --text: #e4e4e7;
     --text-muted: #a1a1aa;
     --card-shadow: 0 1px 4px rgb(0 0 0 / 40%);
+    --uptime-up: #22c55e;
+    --uptime-down: #ef4444;
+    --uptime-unknown: #3f3f46;
   }
 }
 
@@ -154,6 +160,22 @@ body {
   padding: 1rem 1.5rem;
 }
 
+.overall-status-text,
+.overall-status-meta {
+  display: block;
+}
+
+.overall-status-meta {
+  font-size: 0.875rem;
+  font-weight: 400;
+  margin-top: 0.25rem;
+  opacity: 0.9;
+}
+
+.overall-status-meta:empty {
+  display: none;
+}
+
 .overall-status.checking {
   background: #52525b;
 }
@@ -172,6 +194,10 @@ body {
 
 .overall-status.error {
   background: #71717a;
+}
+
+.overall-status.unknown {
+  background: #52525b;
 }
 
 .status-dot {
@@ -196,6 +222,75 @@ body {
 
 .status-dot.error {
   background: #999;
+}
+
+.status-dot.new {
+  background: #3b82f6;
+}
+
+.status-dot.paused {
+  background: #a1a1aa;
+}
+
+/* 28-day uptime */
+
+.uptime {
+  margin-top: 1.25rem;
+}
+
+.uptime-header {
+  align-items: baseline;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.uptime-percent {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.uptime-percent.has-downtime {
+  color: var(--uptime-down);
+}
+
+.uptime-label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.uptime-bars {
+  display: flex;
+  gap: 2px;
+  margin-top: 0.5rem;
+}
+
+.uptime-bar {
+  background: var(--uptime-unknown);
+  border-radius: 2px;
+  flex: 1 1 0;
+  height: 2rem;
+  min-width: 2px;
+}
+
+.uptime-bar.up {
+  background: var(--uptime-up);
+}
+
+.uptime-bar.down {
+  background: var(--uptime-down);
+}
+
+.uptime-bar.unknown {
+  background: var(--uptime-unknown);
+}
+
+.uptime-meta {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  margin: 0.5rem 0 0;
 }
 
 /* ==========================================================================

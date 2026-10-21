@@ -1,0 +1,24 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "serverstatus-api",
+  "main": "index.js",
+  "compatibility_date": "2026-10-01",
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "UPTIME_WINDOW_DAYS": "28",
+    "CACHE_TTL_SECONDS": "60",
+    "ALLOWED_ORIGINS": "*"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "serverstatus",
+      "database_id": "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "triggers": {
+    "crons": ["* * * * *", "0 3 * * *"]
+  }
+}

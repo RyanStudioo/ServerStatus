@@ -1,24 +1,26 @@
 {
-  "name": " ",
-  "version": "0.0.1",
-  "description": "",
+  "name": "serverstatus",
+  "version": "0.1.0",
   "private": true,
-  "keywords": [
-    ""
+  "description": "Server status page and Cloudflare Workers uptime API",
+  "workspaces": [
+    "src/client",
+    "src/server"
   ],
-  "license": "",
-  "author": "",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "webpack serve --open --config webpack.config.dev.js",
-    "build": "webpack --config webpack.config.prod.js"
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @serverstatus/server\" \"npm run dev -w @serverstatus/client\"",
+    "dev:client": "npm run dev -w @serverstatus/client",
+    "dev:server": "npm run dev -w @serverstatus/server",
+    "build": "npm run build -w @serverstatus/client",
+    "test": "npm test -w @serverstatus/server",
+    "deploy:server": "npm run deploy -w @serverstatus/server",
+    "db:migrate:local": "npm run db:migrate:local -w @serverstatus/server",
+    "db:migrate:remote": "npm run db:migrate:remote -w @serverstatus/server"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "devDependencies": {
-    "copy-webpack-plugin": "^11.0.0",
-    "html-webpack-plugin": "^5.6.0",
-    "webpack": "^5.91.0",
-    "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^5.0.4",
-    "webpack-merge": "^5.10.0"
+    "concurrently": "^9.1.2"
   }
 }

@@ -8,6 +8,14 @@ module.exports = merge(common, {
     liveReload: true,
     hot: true,
     open: true,
+    port: 8080,
     static: ['./'],
+    proxy: [
+      {
+        context: ['/api'],
+        target: 'http://127.0.0.1:8787',
+        changeOrigin: true,
+      },
+    ],
   },
 });
