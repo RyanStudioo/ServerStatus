@@ -2,5 +2,5 @@
   "pageTitle": "Server Status",
   "description": "Live status of Ryan Studio's servers",
   "refreshSeconds": 60,
-  "apiBaseUrl": "/api"
+  "apiBaseUrl": "https://serverstatus-api.yanyan2019ry.workers.dev/api"
 }

@@ -15,7 +15,7 @@
     {
       "binding": "DB",
       "database_name": "serverstatus",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_id": "c8d192ca-4696-458b-85fe-da7b0abc861d"
     }
   ],
   "triggers": {
