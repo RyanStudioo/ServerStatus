@@ -1,34 +1,43 @@
 # Server Status
 
-A status page for Ryan Studio's servers. The repository is an npm-workspaces
-monorepo with a static client and a Cloudflare Worker that tracks uptime itself.
+A status page for Ryan Studio's servers. It is an npm-workspaces monorepo made
+of two deployables: a static client and a Cloudflare Worker that tracks uptime
+itself.
+
+There is **no Healthchecks API key**. The Worker samples Healthchecks' public
+per-check badge endpoints, stores the history in Cloudflare D1, and serves it
+over a small JSON API that only the client consumes.
+
+| Deployable | What it is | Path |
+| --- | --- | --- |
+| Client | Static site built with webpack, hosted on Cloudflare Pages | `src/client` |
+| API | Cloudflare Worker + D1, hosted on Cloudflare Workers | `src/server` |
 
 ```text
-src/client  Static site built with webpack (Cloudflare Pages)
-src/server  Cloudflare Worker that samples Healthchecks.io badges (Workers)
+Cloudflare Cron (every minute)
+        │
+        ▼
+  Worker (serverstatus-api) ── fetch ──▶ Healthchecks.io public badge JSON
+        │                                 (per-check, no API key)
+        ▼
+  Cloudflare D1 — `samples` table (28-day history)
+        │
+        ▼
+  GET /api/status ──▶ Static client (Cloudflare Pages)
 ```
 
 ## How it works
 
-There is **no Healthchecks API key**. The Worker uses the public per-check badge
-JSON endpoint, which only returns the check's current status:
-
-```text
-https://healthchecks.io/b/2/<badge-key>.json
-```
-
-To build a 28-day history, the Worker:
-
-1. Runs on a **one-minute Cloudflare Cron Trigger**.
-2. Fetches the public badge JSON for every server in
+1. The Worker runs on a **one-minute Cloudflare Cron Trigger**.
+2. Each run fetches the public badge JSON for every server in
    `src/server/config.json`.
-3. Inserts one status sample per check into a **Cloudflare D1** database.
-4. Serves current status, uptime percentage, downtime, incidents, and 28 daily
-   bars from that sample history.
-5. Deletes samples older than the configured window plus two days on a daily
-   cron.
+3. One status sample per check is inserted into a **Cloudflare D1** database.
+4. The API serves current status, uptime percentage, downtime, incidents, and
+   28 daily bars from that sample history.
+5. A daily cron deletes samples older than the configured window plus two
+   days.
 
-If the API is requested and the latest sample is more than a minute old, the
+If the API is called while the latest sample is more than a minute old, the
 Worker samples on demand first. That makes the page work immediately on first
 deploy and in local development, even without a running cron.
 
@@ -49,12 +58,11 @@ Checks live in `src/server/config.json`:
 }
 ```
 
-`url` must be a per-check Healthchecks badge URL. Both `/b/2/` and `/b/3/` URLs
-work, and `.svg` URLs are converted to `.json` automatically. The badge key is
-used as the stable database key, so changing only the display name keeps the
-history.
-
-The display name always comes from `config.json`.
+- `url` must be a per-check Healthchecks badge URL. Both `/b/2/` and `/b/3/`
+  URLs work, and `.svg` URLs are converted to `.json` automatically.
+- The badge key is the stable database key, so changing only the display name
+  keeps the history.
+- The display name always comes from `config.json`.
 
 ## Local development
 
@@ -68,10 +76,10 @@ npm run dev
 - Client: <http://localhost:8080>
 - Worker API: <http://localhost:8787>
 - The client's webpack dev server proxies `/api` to the Worker.
-- Wrangler creates a local D1 database automatically; the Worker creates the
-  `samples` table if it does not exist.
+- Wrangler creates a local D1 database automatically, and the Worker creates
+  the `samples` table if it does not exist.
 
-You can also run the processes separately with `npm run dev:client` and
+To run the processes separately, use `npm run dev:client` and
 `npm run dev:server`.
 
 ### Local database commands
@@ -150,7 +158,7 @@ npx wrangler d1 execute serverstatus --local --command "SELECT COUNT(*) FROM sam
 
 - `uptime` is `null` until the first sample is collected.
 - `lastSample` is the last time the Worker successfully checked the badge.
-- `stale` becomes true when the latest sample is more than three minutes old.
+- `stale` becomes `true` when the latest sample is more than three minutes old.
 - `daily` always contains exactly one entry per UTC calendar day in the window.
 - `dataSince` is the first sample in the window. On a fresh deployment the
   percentage reflects only the data collected so far.
@@ -158,12 +166,13 @@ npx wrangler d1 execute serverstatus --local --command "SELECT COUNT(*) FROM sam
 
 ### `GET /api/health`
 
-Returns `{ "ok": true }` without touching D1 or Healthchecks.
+Returns `{ "ok": true, "generatedAt": "…" }` without touching D1 or
+Healthchecks.
 
 ### CORS
 
-`ALLOWED_ORIGINS` defaults to `*`. Set it to a comma-separated allowlist when the
-client and Worker are on different origins:
+`ALLOWED_ORIGINS` defaults to `*`. Set it to a comma-separated allowlist when
+the client and Worker are on different origins:
 
 ```text
 ALLOWED_ORIGINS=https://status.example.com,http://localhost:8080
@@ -179,9 +188,9 @@ Worker settings live in `src/server/wrangler.jsonc`:
 | `CACHE_TTL_SECONDS` | `60` | API cache duration; `0` disables caching |
 | `ALLOWED_ORIGINS` | `*` | CORS allowlist |
 
-Sampling runs once per minute, so `sampleIntervalSeconds` is fixed at 60.
+Sampling runs once per minute, so `sampleIntervalSeconds` is fixed at `60`.
 
-### D1 setup
+## D1 setup
 
 Create the database once:
 
@@ -192,14 +201,14 @@ npx wrangler d1 create serverstatus
 Copy the returned `database_id` into the `d1_databases` section of
 `src/server/wrangler.jsonc`.
 
-The Worker creates the table automatically on first use. You can also apply the
-included migration explicitly:
+The Worker creates the table automatically on first use. You can also apply
+the included migration explicitly:
 
 ```bash
 npm run db:migrate:remote
 ```
 
-Cron triggers are declared in `wrangler.jsonc` and are deployed automatically:
+Cron triggers are declared in `wrangler.jsonc` and deploy automatically:
 
 - `* * * * *` — sample every check
 - `0 3 * * *` — prune old samples
@@ -216,12 +225,10 @@ assembly.
 
 ## Deployment
 
-The client and Worker are deployed separately.
+The client and Worker deploy separately. Set up D1 first (see
+[D1 setup](#d1-setup)).
 
 ### Worker (Cloudflare Workers)
-
-1. Create the D1 database and update `database_id` as described above.
-2. Deploy:
 
 ```bash
 npm run deploy:server
@@ -241,7 +248,8 @@ or route there if you do not want to use the `*.workers.dev` URL.
 npm run build
 ```
 
-Upload `src/client/dist` to Cloudflare Pages, or connect the repository and use:
+Upload `src/client/dist` to Cloudflare Pages, or connect the repository and
+use:
 
 - Build command: `npm run build`
 - Output directory: `src/client/dist`
