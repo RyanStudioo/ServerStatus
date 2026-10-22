@@ -23,8 +23,15 @@ let config = {};
 let banner;
 let bannerText;
 let bannerMeta;
+let uptimeTextSpan;
+let metaUpdated;
+let refreshButton;
+let legend;
 let baseTitle = document.title;
 let lastUpdatedAt = null;
+let refreshing = false;
+
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 // Shared hover tooltip for the daily uptime bars.
 let tooltip;
@@ -61,6 +68,25 @@ function slugify(name, fallbackIndex) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug || `server-${fallbackIndex + 1}`;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// A simple two-bay server rack for empty states.
+const EMPTY_STATE_ICON =
+  '<rect x="3" y="3.5" width="18" height="7.5" rx="2" fill="none" stroke="currentColor"'
+  + ' stroke-width="1.5" />'
+  + '<rect x="3" y="13" width="18" height="7.5" rx="2" fill="none" stroke="currentColor"'
+  + ' stroke-width="1.5" />'
+  + '<circle cx="7" cy="7.25" r="0.75" fill="currentColor" />'
+  + '<circle cx="7" cy="16.75" r="0.75" fill="currentColor" />';
+
+function createSvgIcon(paths) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = paths;
+  return svg;
 }
 
 function createEl(tag, className, text) {
@@ -125,13 +151,6 @@ function formatRelative(value) {
   return rtf.format(Math.round(diffSeconds / 86400), 'day');
 }
 
-function formatUpdated(value) {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
 function formatSince(value) {
   if (!value) return '';
   const date = value instanceof Date ? value : new Date(value);
@@ -139,10 +158,10 @@ function formatSince(value) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
 }
 
-function setBanner(state, text, meta = '') {
-  banner.className = `overall-status ${state}`;
+function setBanner(state, text) {
+  banner.classList.remove('checking', 'up', 'grace', 'down', 'error', 'unknown');
+  banner.classList.add(state);
   bannerText.textContent = text;
-  bannerMeta.textContent = meta;
 }
 
 function setEmptyState(message) {
@@ -154,18 +173,43 @@ function setEmptyState(message) {
   }
 
   if (!el) {
-    el = createEl('p', 'server-details empty-state');
+    el = createEl('div', 'empty-state');
     el.id = 'empty-state';
     document.getElementById('servers').append(el);
   }
-  el.textContent = message;
+  el.replaceChildren(createSvgIcon(EMPTY_STATE_ICON), createEl('p', null, message));
+}
+
+function setRefreshing(value) {
+  refreshing = value;
+  banner.classList.toggle('refreshing', value);
+  if (refreshButton) refreshButton.classList.toggle('spinning', value);
+}
+
+// Hides the whole meta line when both the uptime text and the updated stamp
+// are empty.
+function updateBannerMeta() {
+  bannerMeta.hidden = !uptimeTextSpan.textContent && !metaUpdated.textContent;
+}
+
+// Keeps the "Updated …" stamp honest between API polls.
+function tickBannerMeta() {
+  metaUpdated.textContent = lastUpdatedAt ? `Updated ${formatRelative(lastUpdatedAt)}` : '';
+  updateBannerMeta();
 }
 
 function createCard(server, index, key) {
   const card = createEl('div', 'server-card');
   card.id = key.replace(/[^a-zA-Z0-9_-]/g, '-');
+  if (card.id) {
+    // Lets View Transitions animate cards moving between sorted positions.
+    card.style.viewTransitionName = `card-${card.id}`;
+  }
 
-  const name = createEl('h2', null, server.name || `Server ${index + 1}`);
+  const name = createEl('h2');
+  const nameLink = createEl('a', 'server-link', server.name || `Server ${index + 1}`);
+  nameLink.href = `#${card.id}`;
+  name.append(nameLink);
 
   const statusLine = createEl('p', 'server-status');
   const dot = createEl('span', 'status-dot');
@@ -184,7 +228,29 @@ function createCard(server, index, key) {
   uptimeHeader.append(percent, label);
 
   const bars = createEl('div', 'uptime-bars');
-  bars.setAttribute('role', 'img');
+  // One tab stop for the whole strip; arrow keys move between days.
+  bars.tabIndex = 0;
+  bars.setAttribute('role', 'group');
+  bars.addEventListener('keydown', (event) => {
+    const barList = Array.from(bars.children);
+    const current = barList.indexOf(document.activeElement);
+    let next = null;
+
+    if (event.key === 'ArrowRight') {
+      next = current < 0 ? 0 : Math.min(current + 1, barList.length - 1);
+    } else if (event.key === 'ArrowLeft') {
+      next = current < 0 ? barList.length - 1 : Math.max(current - 1, 0);
+    } else if (event.key === 'Home') {
+      next = 0;
+    } else if (event.key === 'End') {
+      next = barList.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    if (barList[next]) barList[next].focus();
+  });
 
   const meta = createEl('p', 'uptime-meta');
 
@@ -195,6 +261,7 @@ function createCard(server, index, key) {
   const entry = {
     card,
     name,
+    nameLink,
     dot,
     text,
     details,
@@ -217,20 +284,38 @@ function renderBars(container, daily, windowDays) {
   for (let index = 0; index < windowDays; index += 1) {
     const day = entries[index];
     const bar = createEl('span', 'uptime-bar');
+    bar.tabIndex = -1;
+    bar.setAttribute('role', 'img');
 
     if (!day || day.uptimePercent === null || day.uptimePercent === undefined) {
       bar.classList.add('unknown');
+      bar.setAttribute('aria-label', 'No data');
     } else {
       const percent = Number(day.uptimePercent);
       bar.classList.add(percent >= 99.995 ? 'up' : 'down');
+      const downtime = Number(day.downSeconds) > 0
+        ? `, ${formatDuration(day.downSeconds)} downtime`
+        : '';
+      bar.setAttribute(
+        'aria-label',
+        `${formatFullDate(day.date)}: ${formatPercent(percent)}% uptime${downtime}`,
+      );
     }
 
-    bar.addEventListener('mouseenter', () => showDayTooltip(bar, day));
-    bar.addEventListener('mouseleave', hideDayTooltip);
-
-    bar.setAttribute('aria-hidden', 'true');
+    ensureBarDayTooltip(bar, day);
     container.append(bar);
   }
+}
+
+// Shared tooltip wiring for a single daily bar: hover, tap, and keyboard focus.
+function ensureBarDayTooltip(bar, day) {
+  bar.addEventListener('mouseenter', () => showDayTooltip(bar, day));
+  bar.addEventListener('mouseleave', hideDayTooltip);
+  bar.addEventListener('focus', () => showDayTooltip(bar, day));
+  bar.addEventListener('blur', hideDayTooltip);
+  // Touch taps get a click after the global pointerdown handler has reset
+  // the tooltip, so tapping a bar (or anywhere else) works on mobile too.
+  bar.addEventListener('click', () => showDayTooltip(bar, day));
 }
 
 /*
@@ -295,12 +380,47 @@ function positionDayTooltip(bar) {
   tooltip.style.top = `${Math.round(top)}px`;
 }
 
-function renderCard(entry, server, windowDays) {
+/*
+ * Runs a DOM update inside a View Transition when the browser supports it and
+ * the user has not asked for reduced motion, so reordered cards glide into
+ * place instead of teleporting.
+ */
+function withViewTransition(update) {
+  if (!document.startViewTransition || prefersReducedMotion.matches) {
+    update();
+    return;
+  }
+  document.startViewTransition(update);
+}
+
+// Brief tinted pulse on a card whose status just changed.
+function flashCard(card, kind) {
+  card.classList.remove('flash-up', 'flash-down');
+  // Force a reflow so re-adding the class restarts the animation.
+  void card.offsetWidth;
+  card.classList.add(kind);
+  card.addEventListener(
+    'animationend',
+    () => card.classList.remove(kind),
+    { once: true },
+  );
+}
+
+function renderCard(entry, server, windowDays, previousStatus) {
   const status = server.error ? 'error' : server.status || 'error';
-  entry.name.textContent = server.name || 'Server';
+  entry.nameLink.textContent = server.name || 'Server';
   entry.dot.className = `status-dot ${status}`;
   entry.text.textContent = STATUS_LABELS[status] || String(status);
   entry.label.textContent = `${windowDays}-day uptime`;
+  entry.card.classList.toggle('down', status === 'down');
+
+  if (
+    previousStatus
+    && previousStatus !== status
+    && !prefersReducedMotion.matches
+  ) {
+    flashCard(entry.card, status === 'up' ? 'flash-up' : 'flash-down');
+  }
 
   if (server.error) {
     entry.details.textContent = server.error;
@@ -323,8 +443,14 @@ function renderCard(entry, server, windowDays) {
 
   const percent = uptime.percent;
   entry.percent.textContent = percent === null ? '—' : `${formatPercent(percent)}%`;
-  entry.percent.className =
-    percent !== null && percent < 100 ? 'uptime-percent has-downtime' : 'uptime-percent';
+  // Red for meaningful downtime; amber for the 99.x% edge cases.
+  entry.percent.className = percent === null
+    ? 'uptime-percent'
+    : percent < 99
+      ? 'uptime-percent has-downtime'
+      : percent < 100
+        ? 'uptime-percent has-minor-downtime'
+        : 'uptime-percent';
 
   renderBars(entry.bars, uptime.daily, windowDays);
   entry.bars.setAttribute(
@@ -404,21 +530,21 @@ function renderOverview(payload) {
     uptimeText = `${formatPercent(overall.uptimePercent)}% uptime over the past ${windowDays} days`;
   }
 
-  const updated = formatUpdated(payload.generatedAt);
-  const meta = updated ? `${uptimeText} · Updated ${updated}` : uptimeText;
+  uptimeTextSpan.textContent = uptimeText;
+  tickBannerMeta();
 
   if (total === 0) {
-    setBanner('unknown', 'No servers configured', meta);
+    setBanner('unknown', 'No servers configured');
   } else if (down > 0) {
-    setBanner('down', `${plural(down, 'server')} of ${total} down`, meta);
+    setBanner('down', `${plural(down, 'server')} of ${total} down`);
   } else if (grace > 0) {
-    setBanner('grace', `${plural(grace, 'server')} late (grace period)`, meta);
+    setBanner('grace', `${plural(grace, 'server')} late (grace period)`);
   } else if (errors > 0) {
-    setBanner('error', `Status unavailable for ${plural(errors, 'server')}`, meta);
+    setBanner('error', `Status unavailable for ${plural(errors, 'server')}`);
   } else if (up > 0) {
-    setBanner('up', 'All systems operational', meta);
+    setBanner('up', 'All systems operational');
   } else {
-    setBanner('unknown', 'No active checks', meta);
+    setBanner('unknown', 'No active checks');
   }
 
   updateTab(down);
@@ -428,31 +554,38 @@ function renderOverview(payload) {
 function applyPayload(payload) {
   const servers = Array.isArray(payload.servers) ? payload.servers : [];
   const windowDays = payload.window && payload.window.days ? payload.window.days : 28;
-  const seen = new Set();
 
-  servers.forEach((server, index) => {
-    const key = String(server.id || slugify(server.name, index));
-    let entry = cards.get(key);
+  withViewTransition(() => {
+    const seen = new Set();
 
-    if (!entry) {
-      entry = createCard(server, index, key);
+    servers.forEach((server, index) => {
+      const key = String(server.id || slugify(server.name, index));
+      let entry = cards.get(key);
+      const previousStatus = entry && entry.data
+        ? (entry.data.error ? 'error' : entry.data.status || 'error')
+        : null;
+
+      if (!entry) {
+        entry = createCard(server, index, key);
+      }
+
+      entry.order = index;
+      entry.data = server;
+      renderCard(entry, server, windowDays, previousStatus);
+      seen.add(key);
+    });
+
+    for (const [key, entry] of cards) {
+      if (!seen.has(key)) {
+        entry.card.remove();
+        cards.delete(key);
+      }
     }
 
-    entry.order = index;
-    entry.data = server;
-    renderCard(entry, server, windowDays);
-    seen.add(key);
+    setEmptyState(servers.length === 0 ? 'No servers are configured on the status API.' : null);
+    if (legend) legend.hidden = servers.length === 0;
+    renderOverview(payload);
   });
-
-  for (const [key, entry] of cards) {
-    if (!seen.has(key)) {
-      entry.card.remove();
-      cards.delete(key);
-    }
-  }
-
-  setEmptyState(servers.length === 0 ? 'No servers are configured on the status API.' : null);
-  renderOverview(payload);
 }
 
 function showLoadError(error) {
@@ -460,9 +593,9 @@ function showLoadError(error) {
     ? `Could not load status (${error.message})`
     : 'Could not load status';
 
-  const updated = lastUpdatedAt ? formatUpdated(lastUpdatedAt) : '';
-  const meta = updated ? `Showing last known status from ${updated}` : '';
-  setBanner('error', message, meta);
+  setBanner('error', message);
+  // Keep the updated stamp honest about how old the data is.
+  tickBannerMeta();
 
   if (cards.size === 0) {
     setEmptyState('The status API could not be reached.');
@@ -470,6 +603,7 @@ function showLoadError(error) {
 }
 
 async function loadStatus() {
+  setRefreshing(true);
   try {
     const response = await fetch(apiUrl('status'), {
       cache: 'no-store',
@@ -497,7 +631,44 @@ async function loadStatus() {
     applyPayload(payload);
   } catch (error) {
     showLoadError(error);
+  } finally {
+    setRefreshing(false);
   }
+}
+
+/*
+ * Header chrome that does not depend on config.json: the manual refresh
+ * button (from index.html) and the uptime-bar color legend.
+ */
+function setupChrome() {
+  refreshButton = document.querySelector('.refresh-button');
+  if (refreshButton) {
+    refreshButton.addEventListener('click', () => {
+      if (!refreshing) loadStatus();
+    });
+  }
+
+  legend = createEl('div', 'uptime-legend');
+  legend.hidden = true;
+  legend.append(
+    legendItem('up', 'Up'),
+    legendItem('down', 'Downtime'),
+    legendItem('unknown', 'No data'),
+  );
+  document.getElementById('servers').before(legend);
+}
+
+function legendItem(kind, text) {
+  const item = createEl('span', 'legend-item');
+  const swatch = createEl('span', `legend-swatch ${kind}`);
+  swatch.setAttribute('aria-hidden', 'true');
+  item.append(swatch, createEl('span', null, text));
+  return item;
+}
+
+function setMetaContent(selector, content) {
+  const meta = document.querySelector(selector);
+  if (meta) meta.setAttribute('content', content);
 }
 
 async function init() {
@@ -505,10 +676,17 @@ async function init() {
   banner.setAttribute('role', 'status');
   bannerText = createEl('span', 'overall-status-text', 'Checking statuses…');
   bannerMeta = createEl('span', 'overall-status-meta');
+  bannerMeta.hidden = true;
+  uptimeTextSpan = createEl('span', 'overall-uptime');
+  metaUpdated = createEl('span', 'meta-updated');
+  const spinner = createEl('span', 'refresh-spinner');
+  spinner.setAttribute('aria-hidden', 'true');
+  bannerMeta.append(uptimeTextSpan, metaUpdated, spinner);
   banner.append(bannerText, bannerMeta);
   document.getElementById('servers').before(banner);
 
   createTooltip();
+  setupChrome();
 
   try {
     const response = await fetch(CONFIG_URL, { cache: 'no-store' });
@@ -523,10 +701,18 @@ async function init() {
     document.title = config.pageTitle;
     document.querySelector('h1').textContent = config.pageTitle;
     baseTitle = config.pageTitle;
+    setMetaContent('meta[property="og:title"]', config.pageTitle);
   }
   if (config.description) {
     const description = document.querySelector('meta[name="description"]');
     if (description) description.setAttribute('content', config.description);
+    setMetaContent('meta[property="og:description"]', config.description);
+
+    const pageDescription = document.querySelector('.page-description');
+    if (pageDescription) {
+      pageDescription.textContent = config.description;
+      pageDescription.hidden = false;
+    }
   }
 
   const refreshSeconds = Math.max(
@@ -536,6 +722,8 @@ async function init() {
 
   await loadStatus();
   setInterval(loadStatus, refreshSeconds * 1000);
+  // Keeps the "Updated …" stamp current between polls.
+  setInterval(tickBannerMeta, 1000);
 }
 
 init();

@@ -8,11 +8,12 @@
   <link rel="stylesheet" href="css/style.css">
   <meta name="description" content="Live status of Ryan Studio's servers">
 
-  <meta property="og:title" content="">
-  <meta property="og:type" content="">
+  <meta property="og:title" content="Server Status">
+  <meta property="og:type" content="website">
   <meta property="og:url" content="">
-  <meta property="og:image" content="">
-  <meta property="og:image:alt" content="">
+  <meta property="og:image" content="/icon.png">
+  <meta property="og:image:alt" content="Server Status logo">
+  <meta property="og:description" content="Live status of Ryan Studio's servers">
 
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -26,7 +27,19 @@
 <body>
 
   <main class="status-page">
-    <h1>Server Status</h1>
+    <header class="page-header">
+      <div class="page-heading">
+        <h1>Server Status</h1>
+        <p class="page-description" hidden></p>
+      </div>
+      <button class="refresh-button" type="button" aria-label="Refresh status" title="Refresh now">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+          stroke-linejoin="round" aria-hidden="true">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+      </button>
+    </header>
     <div id="servers"></div>
   </main>
 
