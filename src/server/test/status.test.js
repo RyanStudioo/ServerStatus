@@ -278,3 +278,19 @@ test('loadStatusPayload makes duplicate display names unique', async () => {
   assert.equal(payload.servers[0].id, 'server');
   assert.equal(payload.servers[1].id, 'server-2');
 });
+
+test('loadStatusPayload includes configured process tags', async () => {
+  const servers = resolveServers([
+    { name: 'Web 01', url: BADGE_URL, processes: ['API', 'Postgres'] },
+    { name: 'Bare', url: BADGE_URL },
+  ]);
+  const payload = await loadStatusPayload({
+    db: queryDb(),
+    servers,
+    config: { windowDays: 28, sampleIntervalSeconds: 60 },
+    now: new Date('2026-10-21T12:00:30.000Z'),
+  });
+
+  assert.deepEqual(payload.servers[0].processes, ['API', 'Postgres']);
+  assert.equal(payload.servers[1].processes, undefined);
+});

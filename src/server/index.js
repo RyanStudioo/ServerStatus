@@ -1,10 +1,8 @@
-import serverConfig from './config.json';
-import { getConfig } from './lib/config.js';
+import { getConfig, getServers } from './lib/config.js';
 import { errorResponse, jsonResponse, corsHeaders, withHeaders } from './lib/http.js';
 import { ensureSchema, pruneSamples } from './lib/schema.js';
 import { getStatusPayload, recordSamples, resolveServers } from './lib/status.js';
 
-const configuredServers = Array.isArray(serverConfig.servers) ? serverConfig.servers : [];
 const CACHE_PATH = '/__cache/api-status';
 const PRUNE_CRON = '0 3 * * *';
 
@@ -78,7 +76,7 @@ export default {
     try {
       const payload = await getStatusPayload({
         db: env.DB,
-        servers: configuredServers,
+        servers: await getServers(env),
         config,
         now: new Date(),
       });
@@ -133,7 +131,7 @@ export default {
 
       await recordSamples({
         db: env.DB,
-        servers: resolveServers(configuredServers),
+        servers: resolveServers(await getServers(env)),
         now: new Date(),
       });
     })();

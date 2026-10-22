@@ -15,11 +15,13 @@ export function resolveServers(configuredServers) {
   return servers.map((entry, index) => {
     const name = String((entry && entry.name) || '').trim() || `Server ${index + 1}`;
     const badge = parseBadgeUrl(entry && entry.url);
+    const processes = entry && Array.isArray(entry.processes) ? entry.processes : [];
 
     return {
       key: badge ? badge.badgeKey : `server-${index + 1}`,
       name,
       badge,
+      processes,
     };
   });
 }
@@ -221,6 +223,7 @@ export async function loadStatusPayload({
       if (!server.badge) {
         return {
           name: server.name,
+          ...(server.processes.length ? { processes: server.processes } : {}),
           status: 'error',
           lastSample: null,
           stale: true,
@@ -254,6 +257,7 @@ export async function loadStatusPayload({
 
       return {
         name: server.name,
+        ...(server.processes.length ? { processes: server.processes } : {}),
         status,
         lastSample,
         stale,

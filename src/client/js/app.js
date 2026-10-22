@@ -221,6 +221,11 @@ function createCard(server, index, key) {
 
   const details = createEl('p', 'server-details');
 
+  // Display-only process/service tags from the server config.
+  const processes = createEl('ul', 'server-tags');
+  processes.setAttribute('aria-label', 'Processes and services');
+  processes.hidden = true;
+
   const uptime = createEl('div', 'uptime');
   const uptimeHeader = createEl('div', 'uptime-header');
   const percent = createEl('span', 'uptime-percent', '—');
@@ -255,7 +260,7 @@ function createCard(server, index, key) {
   const meta = createEl('p', 'uptime-meta');
 
   uptime.append(uptimeHeader, bars, meta);
-  card.append(name, statusLine, details, uptime);
+  card.append(name, statusLine, details, processes, uptime);
   document.getElementById('servers').append(card);
 
   const entry = {
@@ -265,6 +270,7 @@ function createCard(server, index, key) {
     dot,
     text,
     details,
+    processes,
     percent,
     label,
     bars,
@@ -430,6 +436,12 @@ function renderCard(entry, server, windowDays, previousStatus) {
       ? `Last checked ${lastSample}${server.stale ? ' · stale' : ''}`
       : 'No status samples collected yet';
   }
+
+  const processList = Array.isArray(server.processes) ? server.processes : [];
+  entry.processes.hidden = processList.length === 0;
+  entry.processes.replaceChildren(
+    ...processList.map((name) => createEl('li', 'server-tag', String(name))),
+  );
 
   const uptime = server.uptime;
   if (!uptime) {

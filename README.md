@@ -29,8 +29,8 @@ Cloudflare Cron (every minute)
 ## How it works
 
 1. The Worker runs on a **one-minute Cloudflare Cron Trigger**.
-2. Each run fetches the public badge JSON for every server in
-   `src/server/config.json`.
+2. Each run fetches the public badge JSON for every server in the
+   [server config gist](https://gist.github.com/RyanStudioo/82070a6601776f83bce51768593affe0).
 3. One status sample per check is inserted into a **Cloudflare D1** database.
 4. The API serves current status, uptime percentage, downtime, incidents, and
    28 daily bars from that sample history.
@@ -45,14 +45,16 @@ The client only talks to the Worker; it never calls Healthchecks directly.
 
 ## Check configuration
 
-Checks live in `src/server/config.json`:
+The server list lives in a gist that the Worker fetches at runtime:
+<https://gist.github.com/RyanStudioo/82070a6601776f83bce51768593affe0>
 
 ```json
 {
   "servers": [
     {
-      "name": "Server 0",
-      "url": "https://healthchecks.io/b/2/<badge-key>.json"
+      "name": "Web 01",
+      "url": "https://healthchecks.io/b/2/<badge-key>.json",
+      "processes": ["API", "Postgres", "Redis"]
     }
   ]
 }
@@ -62,7 +64,30 @@ Checks live in `src/server/config.json`:
   URLs work, and `.svg` URLs are converted to `.json` automatically.
 - The badge key is the stable database key, so changing only the display name
   keeps the history.
-- The display name always comes from `config.json`.
+- `processes` is optional and display-only: a human-readable list of what runs
+  on that server, shown as tags on its status card. It does not affect status
+  or uptime math.
+
+### Editing the config
+
+The built-in default is a **revision-pinned** raw URL, so on its own it will
+not pick up gist edits. To make gist edits go live without a deploy, add a
+`CONFIG_URL` variable pointing at the version-less raw URL:
+
+```jsonc
+// src/server/wrangler.jsonc
+"vars": {
+  "CONFIG_URL": "https://gist.githubusercontent.com/RyanStudioo/82070a6601776f83bce51768593affe0/raw/server_config.json"
+}
+```
+
+- A raw URL containing a commit hash is frozen to that revision; the
+  version-less `/raw/server_config.json` form always serves the latest one.
+- The Worker re-fetches the URL at most every 30 seconds per running instance,
+  so changes appear within a minute or two.
+- The `/api/status` response itself is cached for 60 seconds by default.
+- If the URL is briefly unreachable, the Worker keeps serving the last config
+  it fetched.
 
 ## Local development
 
@@ -128,6 +153,7 @@ npx wrangler d1 execute serverstatus --local --command "SELECT COUNT(*) FROM sam
       "slug": "server-0",
       "name": "Server 0",
       "status": "up",
+      "processes": ["API", "Postgres"],
       "lastSample": "2026-10-21T16:39:00.000Z",
       "stale": false,
       "uptime": {
@@ -159,6 +185,8 @@ npx wrangler d1 execute serverstatus --local --command "SELECT COUNT(*) FROM sam
 - `uptime` is `null` until the first sample is collected.
 - `lastSample` is the last time the Worker successfully checked the badge.
 - `stale` becomes `true` when the latest sample is more than three minutes old.
+- `processes` appears only when the server's config entry defines one; it is
+  display-only.
 - `daily` always contains exactly one entry per UTC calendar day in the window.
 - `dataSince` is the first sample in the window. On a fresh deployment the
   percentage reflects only the data collected so far.
@@ -187,6 +215,7 @@ Worker settings live in `src/server/wrangler.jsonc`:
 | `UPTIME_WINDOW_DAYS` | `28` | Uptime window, capped at 90 days |
 | `CACHE_TTL_SECONDS` | `60` | API cache duration; `0` disables caching |
 | `ALLOWED_ORIGINS` | `*` | CORS allowlist |
+| `CONFIG_URL` | the pinned gist raw URL | Where the Worker fetches the JSON server list |
 
 Sampling runs once per minute, so `sampleIntervalSeconds` is fixed at `60`.
 
